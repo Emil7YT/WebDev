@@ -22,7 +22,7 @@ read -p "Enter new <h1> text: " NEW_H1
 read -p "Enter new <h3> text: " NEW_H3
 
 # Download the addon HTML from GitHub
-ADDON_URL="https://raw.githubusercontent.com/Emil7YT/WebDev/main/Addons/Editable%20Text/index.html"
+ADDON_URL="https://github.com/Emil7YT/WebDev/blob/main/Addons/Editable%20Text/index.html"
 TMP_FILE="/tmp/addon_index.html"
 
 echo "Downloading addon template..."

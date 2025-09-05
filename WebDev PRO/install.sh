@@ -6,13 +6,50 @@ if [ "$EUID" -ne 0 ]; then
   exit
 fi
 
-echo "Welcome to the WebDev PRO website deployment script!"
+echo "Welcome to the WebDev PRO installer/uninstaller!"
+echo "1) Install WebDev PRO"
+echo "2) Uninstall WebDev PRO"
+read -p "Choose an option [1-2]: " OPTION
 
-# Ask user for domain and email
+if [ "$OPTION" == "2" ]; then
+  read -p "Enter your domain name to uninstall (example.com): " DOMAIN
+  WEB_DIR="/var/www/$DOMAIN"
+  NGINX_CONF="/etc/nginx/sites-available/$DOMAIN"
+
+  echo "Stopping and cleaning up WebDev PRO for $DOMAIN..."
+
+  # Remove website directory
+  if [ -d "$WEB_DIR" ]; then
+    rm -rf "$WEB_DIR"
+    echo "Removed $WEB_DIR"
+  fi
+
+  # Remove Nginx config
+  if [ -f "$NGINX_CONF" ]; then
+    rm -f "$NGINX_CONF"
+    rm -f "/etc/nginx/sites-enabled/$DOMAIN"
+    echo "Removed Nginx config for $DOMAIN"
+  fi
+
+  # Reload Nginx
+  systemctl reload nginx
+
+  # Delete SSL certificates
+  certbot delete --cert-name "$DOMAIN" -n 2>/dev/null
+
+  echo "Uninstallation complete!"
+  exit 0
+fi
+
+# ------------------- INSTALL MODE -------------------
+
+echo "Proceeding with WebDev PRO installation..."
+
+# Ask for domain and email
 read -p "Enter your domain name (example.com or sub.example.com): " DOMAIN
 read -p "Enter your email for SSL certificate: " EMAIL
 
-# Update system packages
+# Update system
 echo "Updating system packages..."
 apt update && apt upgrade -y
 
@@ -22,12 +59,7 @@ apt install nginx git certbot python3-certbot-nginx -y
 
 # Create website directory
 WEB_DIR="/var/www/$DOMAIN"
-if [ -d "$WEB_DIR" ]; then
-    echo "Directory $WEB_DIR already exists. Pulling latest changes from GitHub..."
-else
-    echo "Creating website directory at $WEB_DIR..."
-    mkdir -p "$WEB_DIR"
-fi
+mkdir -p "$WEB_DIR"
 
 # Download WebDev PRO files
 echo "Downloading WebDev PRO files..."
@@ -38,7 +70,7 @@ curl -fsSL "https://raw.githubusercontent.com/Emil7YT/WebDev-PRO/main/style.css"
 chown -R www-data:www-data "$WEB_DIR"
 chmod -R 755 "$WEB_DIR"
 
-# Create Nginx server block
+# Create Nginx config if missing
 NGINX_CONF="/etc/nginx/sites-available/$DOMAIN"
 if [ ! -f "$NGINX_CONF" ]; then
     echo "Creating Nginx configuration for $DOMAIN..."
@@ -58,22 +90,21 @@ EOL
     ln -s "$NGINX_CONF" /etc/nginx/sites-enabled/
 fi
 
-# Test and reload Nginx
+# Reload Nginx
 nginx -t && systemctl restart nginx
 
-# Request SSL certificate if not already done
+# Request SSL cert
 if ! certbot certificates | grep -q "$DOMAIN"; then
     echo "Requesting SSL certificate for $DOMAIN..."
     certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL"
 fi
 
-# Enable automatic renewal
+# Enable auto-renew
 systemctl enable certbot.timer
 
 echo "----------------------------------------"
 echo "WebDev PRO deployment complete!"
-echo "You can now access your website at: https://$DOMAIN"
-echo "Website files are located at $WEB_DIR"
-echo "To update the site later, run:"
-echo "  curl -fsSL https://raw.githubusercontent.com/Emil7YT/WebDev-PRO/main/install.sh | sudo bash"
+echo "Access your site at: https://$DOMAIN"
+echo "Website files: $WEB_DIR"
+echo "To update later: curl -fsSL https://raw.githubusercontent.com/Emil7YT/WebDev-PRO/main/install.sh | sudo bash"
 echo "----------------------------------------"

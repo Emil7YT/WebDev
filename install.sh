@@ -2,21 +2,36 @@
 
 # Check for root privileges
 if [ "$EUID" -ne 0 ]; then
-  echo "Please run as root or with sudo."
+  echo -e "\e[31mPlease run as root or with sudo.\e[0m"
   exit
 fi
 
-echo "Welcome to the WebDev installer/uninstaller!"
+echo "====================================="
+echo " Welcome to the WebDev Installer!"
+echo "====================================="
 echo "1) Install WebDev"
-echo "2) Uninstall WebDev"
-read -p "Choose an option [1-2]: " OPTION
+echo "2) Install WebDev PRO"
+echo "3) Uninstall"
+read -p "Choose an option [1-3]: " OPTION
 
-if [ "$OPTION" == "2" ]; then
+# ------------------- UNINSTALL MODE -------------------
+if [ "$OPTION" == "3" ]; then
+  echo "What do you want to uninstall?"
+  echo "1) WebDev"
+  echo "2) WebDev PRO"
+  read -p "Choose [1-2]: " UNINSTALL_CHOICE
+
   read -p "Enter your domain name to uninstall (example.com): " DOMAIN
   WEB_DIR="/var/www/$DOMAIN"
   NGINX_CONF="/etc/nginx/sites-available/$DOMAIN"
 
-  echo "Stopping and cleaning up WebDev for $DOMAIN..."
+  # Check if the domain exists
+  if [ ! -d "$WEB_DIR" ] && [ ! -f "$NGINX_CONF" ]; then
+    echo -e "\e[31mError: No installation found for $DOMAIN. Nothing to uninstall.\e[0m"
+    exit 1
+  fi
+
+  echo "Stopping and cleaning up for $DOMAIN..."
 
   # Remove website directory
   if [ -d "$WEB_DIR" ]; then
@@ -37,16 +52,16 @@ if [ "$OPTION" == "2" ]; then
   # Delete SSL certificates
   certbot delete --cert-name "$DOMAIN" -n 2>/dev/null
 
-  echo "Uninstallation complete!"
+  if [ "$UNINSTALL_CHOICE" == "1" ]; then
+    echo "WebDev uninstalled successfully!"
+  else
+    echo "WebDev PRO uninstalled successfully!"
+  fi
   exit 0
 fi
 
 # ------------------- INSTALL MODE -------------------
-
-echo "Proceeding with WebDev installation..."
-
-# Ask user for domain and email
-read -p "Enter your domain name (example.com): " DOMAIN
+read -p "Enter your domain name (example.com or sub.example.com): " DOMAIN
 read -p "Enter your email for SSL certificate: " EMAIL
 
 # Update system
@@ -54,25 +69,36 @@ echo "Updating system packages..."
 apt update && apt upgrade -y
 
 # Install necessary packages
-echo "Installing Nginx, Git, and Certbot..."
-apt install nginx git certbot python3-certbot-nginx -y
+echo "Installing Nginx, Git, Curl, and Certbot..."
+apt install nginx git curl certbot python3-certbot-nginx -y
 
 # Create website directory
 WEB_DIR="/var/www/$DOMAIN"
-if [ -d "$WEB_DIR" ]; then
-    echo "Directory $WEB_DIR already exists. Pulling latest changes from GitHub..."
-    cd "$WEB_DIR" || exit
-    git pull
+mkdir -p "$WEB_DIR"
+
+if [ "$OPTION" == "1" ]; then
+    echo "Installing WebDev..."
+    if [ -d "$WEB_DIR/.git" ]; then
+        echo "Directory already exists, pulling latest changes..."
+        cd "$WEB_DIR" || exit
+        git pull
+    else
+        git clone https://github.com/Emil7YT/WebDev.git "$WEB_DIR"
+    fi
+elif [ "$OPTION" == "2" ]; then
+    echo "Installing WebDev PRO..."
+    curl -fsSL "https://raw.githubusercontent.com/Emil7YT/WebDev-PRO/main/index.html" -o "$WEB_DIR/index.html"
+    curl -fsSL "https://raw.githubusercontent.com/Emil7YT/WebDev-PRO/main/style.css" -o "$WEB_DIR/style.css"
 else
-    echo "Cloning GitHub repository into $WEB_DIR..."
-    git clone https://github.com/Emil7YT/WebDev.git "$WEB_DIR"
+    echo -e "\e[31mInvalid option.\e[0m"
+    exit 1
 fi
 
 # Set permissions
 chown -R www-data:www-data "$WEB_DIR"
 chmod -R 755 "$WEB_DIR"
 
-# Create Nginx server block if missing
+# Create Nginx config
 NGINX_CONF="/etc/nginx/sites-available/$DOMAIN"
 if [ ! -f "$NGINX_CONF" ]; then
     echo "Creating Nginx configuration for $DOMAIN..."
@@ -89,7 +115,7 @@ server {
     }
 }
 EOL
-    ln -s "$NGINX_CONF" /etc/nginx/sites-enabled/
+    ln -s "$NGINX_CONF" /etc/nginx/sites-enabled/ || true
 fi
 
 # Reload Nginx
@@ -98,15 +124,22 @@ nginx -t && systemctl restart nginx
 # Request SSL cert
 if ! certbot certificates | grep -q "$DOMAIN"; then
     echo "Requesting SSL certificate for $DOMAIN..."
-    certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --non-interactive --agree-tos -m "$EMAIL"
+    if [ "$OPTION" == "1" ]; then
+        certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --non-interactive --agree-tos -m "$EMAIL"
+    else
+        certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$EMAIL"
+    fi
 fi
 
 # Enable auto-renew
 systemctl enable certbot.timer
 
 echo "----------------------------------------"
-echo "WebDev deployment complete!"
+if [ "$OPTION" == "1" ]; then
+    echo "WebDev deployment complete!"
+else
+    echo "WebDev PRO deployment complete!"
+fi
 echo "Access your site at: https://$DOMAIN"
 echo "Website files: $WEB_DIR"
-echo "To update later: cd $WEB_DIR && git pull && sudo systemctl reload nginx"
 echo "----------------------------------------"
